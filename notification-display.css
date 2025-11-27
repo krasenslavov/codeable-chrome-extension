@@ -23,7 +23,7 @@
 
 .codeable-notification {
 	background: #ffffff;
-	border-left: 4px solid rgb(22, 82, 96);
+	border-left: 4px solid #165260;
 	border-radius: 4px;
 	box-shadow: 0 4px 12px rgba(22, 82, 96, 0.15);
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -76,7 +76,7 @@
 	background: #f5f5f5;
 	border-radius: 4px;
 	padding: 12px;
-	border-left: 2px solid rgba(22, 82, 96);
+	border-left: 2px solid #165260;
 }
 
 .codeable-notification-message {
@@ -87,7 +87,7 @@
 }
 
 .codeable-notification-link {
-	color: rgba(22, 82, 96);
+	color: #165260;
 	font-size: 13px;
 	font-weight: 500;
 	text-decoration: none;
@@ -96,6 +96,6 @@
 }
 
 .codeable-notification-link:hover {
-	color: rgba(22, 82, 96);
+	color: #165260;
 	text-decoration: underline;
 }

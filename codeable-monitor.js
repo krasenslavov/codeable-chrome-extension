@@ -35,13 +35,14 @@ function init() {
 	// Start checking every 60 seconds
 	checkInterval = setInterval(checkNotifications, 60000);
 
-	// Initial check
-	checkNotifications();
+	// Initial check immediately on load
+	console.log("[Codeable Monitor] Running initial check...");
+	checkNotifications(true);
 
 	// Listen for requests from background script
 	chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-		if (message.type === "REQUEST_COUNT") {
-			console.log("[Codeable Monitor] Count requested by background - forcing check");
+		if (message.type === "REQUEST_INITIAL_CHECK") {
+			console.log("[Codeable Monitor] Initial check requested by background - forcing check");
 			// Force check even if tab is focused (for initial load)
 			checkNotifications(true);
 		}
@@ -96,7 +97,7 @@ async function checkNotifications(forceCheck = false) {
 			trigger.click();
 
 			// Wait for popover to appear
-			await new Promise((resolve) => setTimeout(resolve, 10));
+			await new Promise((resolve) => setTimeout(resolve, 1000));
 
 			// Find the popover content
 			const popover = document.querySelector(".popover-content.popover-notifications-widget");
@@ -192,7 +193,7 @@ async function checkNotifications(forceCheck = false) {
 
 		if (hasNewNotification && allNotifications.length > 0) {
 			// Send ALL notifications to other tabs
-			console.log(`[Codeable Monitor] Sending ${allNotifications.length} notifications to other tabs`);
+			console.log(`[Codeable Monitor] Sending ${allNotifications.length} notifications to background`);
 			safeSendMessage({
 				type: "NEW_NOTIFICATION",
 				notifications: allNotifications // Send array of all notifications
@@ -217,7 +218,7 @@ function saveFavicon() {
 
 		if (faviconLink) {
 			originalFavicon = faviconLink.href;
-			console.log("[Codeable Monitor] Original favicon saved:", originalFavicon, "Type:", faviconLink.type);
+			console.log("[Codeable Monitor] Original favicon saved:", originalFavicon);
 		} else {
 			console.warn("[Codeable Monitor] No favicon link found!");
 		}
@@ -230,8 +231,8 @@ function createNotificationFavicon(count) {
 	canvas.height = 32;
 	const ctx = canvas.getContext("2d");
 
-	// Draw dark green circle background
-	ctx.fillStyle = "#242628";
+	// Draw dark circle background
+	ctx.fillStyle = "#165260";
 	ctx.beginPath();
 	ctx.arc(16, 16, 15, 0, 2 * Math.PI);
 	ctx.fill();
@@ -259,22 +260,20 @@ function createNotificationFavicon(count) {
 function updateFavicon(count) {
 	saveFavicon();
 
-	console.log(
-		`[Codeable Monitor] updateFavicon: count=${count}, isTabFocused=${isTabFocused}, document.hidden=${document.hidden}`
-	);
+	console.log(`[Codeable Monitor] updateFavicon: count=${count}`);
 
 	if (!faviconLink) {
 		console.warn("[Codeable Monitor] No favicon link found");
 		return;
 	}
 
+	// Show notification favicon when count > 0, restore original when count = 0
+	// Badge and favicon will reset naturally when platform detects mark-as-read
 	if (count > 0) {
-		// Show notification favicon when there are notifications
 		const notificationFavicon = createNotificationFavicon(count);
 		faviconLink.href = notificationFavicon;
 		console.log(`[Codeable Monitor] Favicon updated with count: ${count}`);
 	} else {
-		// Restore original favicon when no notifications
 		if (originalFavicon) {
 			faviconLink.href = originalFavicon;
 			console.log(`[Codeable Monitor] Favicon restored to original (count: ${count})`);
@@ -282,81 +281,45 @@ function updateFavicon(count) {
 	}
 }
 
-function restoreFavicon() {
-	if (originalFavicon && faviconLink) {
-		faviconLink.href = originalFavicon;
-		console.log("[Codeable Monitor] Favicon restored (tab focused)");
-	}
-}
-
-// Handle clicks on the notification wrapper to clear notifications
-function setupClickHandler() {
-	const wrapper = document.querySelector(".header-notification-wrapper");
-	if (wrapper) {
-		wrapper.addEventListener("click", () => {
-			// Clear badge when notifications are clicked
-			safeSendMessage({ type: "CLEAR_BADGE" });
-			previousCount = 0;
-			previousNotifications = [];
-
-			// Restore original favicon
-			updateFavicon(0);
-		});
-	} else {
-		// Retry after a short delay if wrapper not found
-		setTimeout(setupClickHandler, 1000);
-	}
-}
-
-// Setup tab focus/blur handlers for favicon
+// Setup tab visibility handlers to track focus state
 function setupFocusHandlers() {
 	console.log("[Codeable Monitor] Setting up focus handlers...");
 
-	// Use visibilitychange API which is more reliable
+	// Use visibilitychange API to track tab visibility
 	document.addEventListener("visibilitychange", () => {
 		if (document.hidden) {
 			// Tab is now hidden (blurred)
-			console.log(`[Codeable Monitor] Tab HIDDEN - showing notification favicon (count: ${previousCount})`);
+			console.log("[Codeable Monitor] Tab HIDDEN");
 			isTabFocused = false;
-			if (previousCount > 0) {
-				updateFavicon(previousCount);
-			}
 		} else {
 			// Tab is now visible (focused)
-			console.log("[Codeable Monitor] Tab VISIBLE - restoring original favicon");
+			console.log("[Codeable Monitor] Tab VISIBLE");
 			isTabFocused = true;
-			restoreFavicon();
 		}
 	});
 
 	// Also add window focus/blur as backup
 	window.addEventListener("focus", () => {
-		console.log("[Codeable Monitor] Window FOCUSED - restoring original favicon");
+		console.log("[Codeable Monitor] Window FOCUSED");
 		isTabFocused = true;
-		restoreFavicon();
 	});
 
 	window.addEventListener("blur", () => {
-		console.log(`[Codeable Monitor] Window BLURRED - showing notification favicon (count: ${previousCount})`);
+		console.log("[Codeable Monitor] Window BLURRED");
 		isTabFocused = false;
-		if (previousCount > 0) {
-			updateFavicon(previousCount);
-		}
 	});
 
-	console.log("[Codeable Monitor] ✅ Tab focus handlers set up (visibilitychange + focus/blur)");
+	console.log("[Codeable Monitor] ✅ Tab focus handlers set up");
 }
 
 // Start monitoring when DOM is ready
 if (document.readyState === "loading") {
 	document.addEventListener("DOMContentLoaded", () => {
 		init();
-		setupClickHandler();
 		setupFocusHandlers();
 	});
 } else {
 	init();
-	setupClickHandler();
 	setupFocusHandlers();
 }
 

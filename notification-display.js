@@ -5,20 +5,27 @@
 let notificationElement = null;
 const DISMISSED_KEY = "dismissedNotifications";
 
-// Get dismissed notifications from localStorage
-function getDismissedNotifications() {
-	const dismissed = localStorage.getItem(DISMISSED_KEY);
-	return dismissed ? JSON.parse(dismissed) : [];
+// Get dismissed notifications from chrome.storage (browser-wide)
+function getDismissedNotifications(callback) {
+	chrome.storage.local.get([DISMISSED_KEY], (result) => {
+		const dismissed = result[DISMISSED_KEY] || [];
+		callback(dismissed);
+	});
 }
 
-// Save dismissed notification
-function dismissNotification(notificationText) {
-	const dismissed = getDismissedNotifications();
-	if (!dismissed.includes(notificationText)) {
-		dismissed.push(notificationText);
-		localStorage.setItem(DISMISSED_KEY, JSON.stringify(dismissed));
-		console.log("[Notification Display] Dismissed:", notificationText.substring(0, 30));
-	}
+// Save dismissed notification (browser-wide)
+function dismissNotification(notificationId, callback) {
+	getDismissedNotifications((dismissed) => {
+		if (!dismissed.includes(notificationId)) {
+			dismissed.push(notificationId);
+			chrome.storage.local.set({ [DISMISSED_KEY]: dismissed }, () => {
+				console.log("[Notification Display] Dismissed:", notificationId);
+				if (callback) callback();
+			});
+		} else {
+			if (callback) callback();
+		}
+	});
 }
 
 // Create notification container
@@ -41,79 +48,89 @@ function createNotificationElement() {
 function showNotifications(notifications) {
 	console.log("[Notification Display] Showing notifications:", notifications);
 
-	const dismissed = getDismissedNotifications();
+	getDismissedNotifications((dismissed) => {
+		// Filter out dismissed notifications
+		const unread = notifications.filter((n) => {
+			// Create unique ID from text + link
+			const notifId = `${n.text}_${n.link}`;
+			return !dismissed.includes(notifId);
+		});
 
-	// Filter out dismissed notifications
-	const unread = notifications.filter((n) => !dismissed.includes(n.text));
-
-	if (unread.length === 0) {
-		console.log("[Notification Display] All notifications already dismissed");
-		hideNotifications();
-		return;
-	}
-
-	console.log(`[Notification Display] Showing ${unread.length} unread notifications`);
-
-	const container = createNotificationElement();
-	container.innerHTML = ""; // Clear previous content
-
-	// Create notification panel
-	const panel = document.createElement("div");
-	panel.className = "codeable-notification";
-
-	// Close button for entire panel
-	const closeBtn = document.createElement("button");
-	closeBtn.className = "codeable-notification-close";
-	closeBtn.innerHTML = "&times;";
-	closeBtn.addEventListener("click", () => {
-		// Dismiss all displayed notifications
-		unread.forEach((n) => dismissNotification(n.text));
-		hideNotifications();
-	});
-
-	// Title
-	const title = document.createElement("div");
-	title.className = "codeable-notification-title";
-	title.textContent = `New Projects (${unread.length})`;
-
-	// Notifications list
-	const list = document.createElement("div");
-	list.className = "codeable-notification-list";
-
-	unread.forEach((notif) => {
-		const item = document.createElement("div");
-		item.className = "codeable-notification-item";
-
-		const text = document.createElement("div");
-		text.className = "codeable-notification-message";
-		text.textContent = notif.text;
-
-		item.appendChild(text);
-
-		if (notif.link) {
-			const link = document.createElement("a");
-			link.className = "codeable-notification-link";
-			link.textContent = "View Project →";
-			link.target = "_blank";
-			link.href = notif.link.startsWith("http")
-				? notif.link
-				: `https://app.codeable.io${notif.link}`;
-
-			item.appendChild(link);
+		if (unread.length === 0) {
+			console.log("[Notification Display] All notifications already dismissed");
+			hideNotifications();
+			return;
 		}
 
-		list.appendChild(item);
+		console.log(`[Notification Display] Showing ${unread.length} unread notifications`);
+
+		const container = createNotificationElement();
+		container.innerHTML = ""; // Clear previous content
+
+		// Create notification panel
+		const panel = document.createElement("div");
+		panel.className = "codeable-notification";
+
+		// Close button for entire panel
+		const closeBtn = document.createElement("button");
+		closeBtn.className = "codeable-notification-close";
+		closeBtn.innerHTML = "&times;";
+		closeBtn.addEventListener("click", () => {
+			// Dismiss all displayed notifications
+			const dismissPromises = unread.map((n) => {
+				return new Promise((resolve) => {
+					const notifId = `${n.text}_${n.link}`;
+					dismissNotification(notifId, resolve);
+				});
+			});
+
+			Promise.all(dismissPromises).then(() => {
+				hideNotifications();
+			});
+		});
+
+		// Title
+		const title = document.createElement("div");
+		title.className = "codeable-notification-title";
+		title.textContent = `New Projects (${unread.length})`;
+
+		// Notifications list
+		const list = document.createElement("div");
+		list.className = "codeable-notification-list";
+
+		unread.forEach((notif) => {
+			const item = document.createElement("div");
+			item.className = "codeable-notification-item";
+
+			const text = document.createElement("div");
+			text.className = "codeable-notification-message";
+			text.textContent = notif.text;
+
+			item.appendChild(text);
+
+			if (notif.link) {
+				const link = document.createElement("a");
+				link.className = "codeable-notification-link";
+				link.textContent = "View Project →";
+				link.target = "_blank";
+				link.href = notif.link.startsWith("http") ? notif.link : `https://app.codeable.io${notif.link}`;
+
+				item.appendChild(link);
+			}
+
+			list.appendChild(item);
+		});
+
+		panel.appendChild(closeBtn);
+		panel.appendChild(title);
+		panel.appendChild(list);
+		container.appendChild(panel);
+
+		// Show container
+		container.classList.remove("codeable-notification-hidden");
+		container.classList.add("codeable-notification-visible");
+		console.log("[Notification Display] Notifications displayed");
 	});
-
-	panel.appendChild(closeBtn);
-	panel.appendChild(title);
-	panel.appendChild(list);
-	container.appendChild(panel);
-
-	// Show container
-	container.classList.remove("codeable-notification-hidden");
-	container.classList.add("codeable-notification-visible");
-	console.log("[Notification Display] Notifications displayed");
 }
 
 // Hide notifications
@@ -135,12 +152,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 	}
 });
 
-// Check for existing notifications on load
-chrome.storage.local.get(["allNotifications", "notificationTimestamp"], (result) => {
-	console.log("[Notification Display] Extension loaded, checking for existing notifications");
-	if (result.allNotifications && result.allNotifications.length > 0) {
+// On load, check if there are existing notifications to show
+// Only show if this tab is currently visible
+chrome.storage.local.get(["newProjectsNotifications", "notificationTimestamp"], (result) => {
+	console.log("[Notification Display] Extension loaded on non-Codeable tab");
+
+	if (result.newProjectsNotifications && result.newProjectsNotifications.length > 0) {
 		const age = Date.now() - result.notificationTimestamp;
-		console.log(`[Notification Display] Found ${result.allNotifications.length} notifications ${age}ms old - displaying them`);
-		showNotifications(result.allNotifications);
+		console.log(
+			`[Notification Display] Found ${result.newProjectsNotifications.length} new-projects notifications ${age}ms old`
+		);
+
+		// Check if this tab is currently visible (content scripts can't use chrome.tabs API)
+		// Use document.visibilityState instead
+		if (document.visibilityState === "visible") {
+			console.log("[Notification Display] Tab is visible - showing notifications");
+			showNotifications(result.newProjectsNotifications);
+		} else {
+			console.log("[Notification Display] Tab is hidden - not showing notifications");
+		}
 	}
 });
