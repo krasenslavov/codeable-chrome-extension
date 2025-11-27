@@ -1,0 +1,33 @@
+{
+	"manifest_version": 3,
+	"name": "Codeable Notifications",
+	"version": "1.0.0",
+	"description": "Monitor Codeable notifications with badge tooltip and notification messages",
+	"permissions": ["tabs", "storage", "scripting"],
+	"host_permissions": ["https://app.codeable.io/*", "http://*/*", "https://*/*"],
+	"background": {
+		"service_worker": "background.js"
+	},
+	"content_scripts": [
+		{
+			"matches": ["https://app.codeable.io/*"],
+			"js": ["codeable-monitor.js"],
+			"run_at": "document_idle"
+		},
+		{
+			"matches": ["http://*/*", "https://*/*"],
+			"js": ["notification-display.js"],
+			"css": ["notification-display.css"],
+			"run_at": "document_idle",
+			"exclude_matches": ["https://app.codeable.io/*"]
+		}
+	],
+	"action": {
+		"default_title": "Codeable Notifications"
+	},
+	"icons": {
+		"16": "icon16.png",
+		"32": "icon32.png",
+		"96": "icon96.png"
+	}
+}

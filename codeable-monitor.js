@@ -1,0 +1,368 @@
+/** @format */
+
+// Content script for monitoring notifications on app.codeable.io
+
+let previousCount = 0;
+let previousNotifications = [];
+let checkInterval = null;
+let originalFavicon = null;
+let faviconLink = null;
+// Initialize based on actual tab visibility state
+let isTabFocused = !document.hidden;
+
+// Helper function to safely send messages to background
+function safeSendMessage(message) {
+	try {
+		chrome.runtime.sendMessage(message);
+	} catch (error) {
+		if (error.message.includes("Extension context invalidated")) {
+			console.warn("[Codeable Monitor] Extension reloaded - please refresh the page");
+			// Stop the interval to prevent repeated errors
+			if (checkInterval) {
+				clearInterval(checkInterval);
+				checkInterval = null;
+			}
+		} else {
+			console.error("[Codeable Monitor] Error sending message:", error);
+		}
+	}
+}
+
+// Initialize monitoring
+function init() {
+	console.log("[Codeable Monitor] Extension loaded and monitoring started");
+
+	// Start checking every 60 seconds
+	checkInterval = setInterval(checkNotifications, 60000);
+
+	// Initial check
+	checkNotifications();
+
+	// Listen for requests from background script
+	chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+		if (message.type === "REQUEST_COUNT") {
+			console.log("[Codeable Monitor] Count requested by background - forcing check");
+			// Force check even if tab is focused (for initial load)
+			checkNotifications(true);
+		}
+	});
+}
+
+// Check for notifications
+async function checkNotifications(forceCheck = false) {
+	try {
+		// Only check notifications when tab is in background (not focused)
+		// This prevents disrupting the user while they're actively on the Codeable page
+		// Exception: when explicitly requested by background (forceCheck=true)
+		if (!forceCheck && !document.hidden && isTabFocused) {
+			console.log("[Codeable Monitor] Tab is focused - skipping check to avoid disruption");
+			return;
+		}
+
+		console.log("[Codeable Monitor] Checking for notifications..." + (forceCheck ? " (forced)" : ""));
+
+		// Only monitor new-projects category
+		const widgets = [
+			{
+				element: document.querySelector("cdbl-notifications-widget[category-name=\"'new-projects'\"]"),
+				category: "new-projects"
+			}
+		].filter((w) => w.element !== null);
+
+		console.log(`[Codeable Monitor] Found ${widgets.length} widgets`);
+
+		if (widgets.length === 0) {
+			// Widgets not loaded yet
+			console.log("[Codeable Monitor] No widgets found yet, waiting...");
+			return;
+		}
+
+		let totalCount = 0;
+		let allNotifications = [];
+
+		// Check each widget for notifications
+		for (const widget of widgets) {
+			console.log(`[Codeable Monitor] Checking ${widget.category} widget`);
+
+			// Find the trigger button INSIDE the widget and click it
+			const trigger = widget.element.querySelector(".notifications-widget-trigger");
+
+			if (!trigger) {
+				console.warn(`[Codeable Monitor] No trigger found for ${widget.category}`);
+				continue;
+			}
+
+			// Click the trigger to open the popover
+			trigger.click();
+
+			// Wait for popover to appear
+			await new Promise((resolve) => setTimeout(resolve, 10));
+
+			// Find the popover content
+			const popover = document.querySelector(".popover-content.popover-notifications-widget");
+			console.log(`[Codeable Monitor] Popover found: ${popover !== null}`);
+
+			// Hide the popover completely (so user doesn't see it)
+			let originalOpacity = "";
+			if (popover) {
+				originalOpacity = popover.style.opacity;
+				popover.style.opacity = 0;
+			}
+
+			if (popover) {
+				const notificationsList = popover.querySelector(".notifications-list-wrapper");
+				console.log(`[Codeable Monitor] Notifications list found: ${notificationsList !== null}`);
+
+				if (notificationsList) {
+					// Get all notification items
+					const notificationItems = notificationsList.querySelectorAll("cdbl-notification-item");
+					console.log(`[Codeable Monitor] Total notification items: ${notificationItems.length}`);
+
+					// Filter only unread notifications (without .notification--isRead)
+					const unreadNotifications = Array.from(notificationItems).filter((item) => {
+						const wrapper = item.querySelector(".notification-wrapper");
+						return wrapper && !wrapper.classList.contains("notification--isRead");
+					});
+
+					const categoryCount = unreadNotifications.length;
+					console.log(`[Codeable Monitor] ${widget.category} unread count: ${categoryCount}`);
+
+					if (categoryCount > 0) {
+						totalCount += categoryCount;
+
+						// Extract ALL unread notification details
+						unreadNotifications.forEach((item) => {
+							const notificationWrapper = item.querySelector(".notification-wrapper");
+
+							if (notificationWrapper) {
+								// The notification-wrapper itself IS the <a> tag
+								const link = notificationWrapper.tagName === "A" ? notificationWrapper.getAttribute("href") : null;
+								const messageEl = notificationWrapper.querySelector(".notification__message");
+
+								if (messageEl) {
+									// Strip HTML tags and get text content
+									const textContent = messageEl.textContent.trim();
+
+									allNotifications.push({
+										category: widget.category,
+										text: textContent,
+										link: link,
+										timestamp: Date.now()
+									});
+								}
+							}
+						});
+
+						console.log(`[Codeable Monitor] Extracted ${allNotifications.length} unread notifications`);
+					}
+				}
+
+				// Restore popover display before closing
+				popover.style.opacity = originalOpacity;
+
+				// Close popover by clicking the trigger again
+				trigger.click();
+
+				await new Promise((resolve) => setTimeout(resolve, 1000));
+			}
+		}
+
+		console.log(`[Codeable Monitor] Total unread count: ${totalCount} (previous: ${previousCount})`);
+
+		// Update badge if count changed
+		if (totalCount !== previousCount) {
+			console.log(`[Codeable Monitor] Sending badge update: ${totalCount}`);
+			safeSendMessage({
+				type: "UPDATE_BADGE",
+				count: totalCount
+			});
+
+			// Update favicon
+			updateFavicon(totalCount);
+
+			previousCount = totalCount;
+		}
+
+		// Check for new notifications by comparing arrays
+		const hasNewNotification = allNotifications.some((notif) => {
+			return !previousNotifications.some((prev) => prev.text === notif.text);
+		});
+
+		console.log(`[Codeable Monitor] Has new notification: ${hasNewNotification}`);
+
+		if (hasNewNotification && allNotifications.length > 0) {
+			// Send ALL notifications to other tabs
+			console.log(`[Codeable Monitor] Sending ${allNotifications.length} notifications to other tabs`);
+			safeSendMessage({
+				type: "NEW_NOTIFICATION",
+				notifications: allNotifications // Send array of all notifications
+			});
+		}
+
+		previousNotifications = allNotifications;
+	} catch (error) {
+		console.error("[Codeable Monitor] Error checking notifications:", error);
+	}
+}
+
+// Favicon notification functions
+function saveFavicon() {
+	if (!faviconLink) {
+		// Try to find the main browser tab favicon (try multiple selectors)
+		faviconLink =
+			document.querySelector("link[rel='icon'][sizes='32x32']") ||
+			document.querySelector("link[rel='icon'][sizes='16x16']") ||
+			document.querySelector("link[rel='shortcut icon']") ||
+			document.querySelector("link[rel='icon']");
+
+		if (faviconLink) {
+			originalFavicon = faviconLink.href;
+			console.log("[Codeable Monitor] Original favicon saved:", originalFavicon, "Type:", faviconLink.type);
+		} else {
+			console.warn("[Codeable Monitor] No favicon link found!");
+		}
+	}
+}
+
+function createNotificationFavicon(count) {
+	const canvas = document.createElement("canvas");
+	canvas.width = 32;
+	canvas.height = 32;
+	const ctx = canvas.getContext("2d");
+
+	// Draw dark green circle background
+	ctx.fillStyle = "#242628";
+	ctx.beginPath();
+	ctx.arc(16, 16, 15, 0, 2 * Math.PI);
+	ctx.fill();
+
+	// Draw white border for better visibility
+	ctx.strokeStyle = "#FFFFFF";
+	ctx.lineWidth = 2;
+	ctx.stroke();
+
+	// Draw white text (count) with shadow for better visibility
+	ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+	ctx.shadowBlur = 2;
+	ctx.shadowOffsetX = 1;
+	ctx.shadowOffsetY = 1;
+	ctx.fillStyle = "#FFFFFF";
+	ctx.font = "bold 24px Arial";
+	ctx.textAlign = "center";
+	ctx.textBaseline = "middle";
+	const text = count > 99 ? "99" : count.toString();
+	ctx.fillText(text, 16, 17);
+
+	return canvas.toDataURL();
+}
+
+function updateFavicon(count) {
+	saveFavicon();
+
+	console.log(
+		`[Codeable Monitor] updateFavicon: count=${count}, isTabFocused=${isTabFocused}, document.hidden=${document.hidden}`
+	);
+
+	if (!faviconLink) {
+		console.warn("[Codeable Monitor] No favicon link found");
+		return;
+	}
+
+	if (count > 0) {
+		// Show notification favicon when there are notifications
+		const notificationFavicon = createNotificationFavicon(count);
+		faviconLink.href = notificationFavicon;
+		console.log(`[Codeable Monitor] Favicon updated with count: ${count}`);
+	} else {
+		// Restore original favicon when no notifications
+		if (originalFavicon) {
+			faviconLink.href = originalFavicon;
+			console.log(`[Codeable Monitor] Favicon restored to original (count: ${count})`);
+		}
+	}
+}
+
+function restoreFavicon() {
+	if (originalFavicon && faviconLink) {
+		faviconLink.href = originalFavicon;
+		console.log("[Codeable Monitor] Favicon restored (tab focused)");
+	}
+}
+
+// Handle clicks on the notification wrapper to clear notifications
+function setupClickHandler() {
+	const wrapper = document.querySelector(".header-notification-wrapper");
+	if (wrapper) {
+		wrapper.addEventListener("click", () => {
+			// Clear badge when notifications are clicked
+			safeSendMessage({ type: "CLEAR_BADGE" });
+			previousCount = 0;
+			previousNotifications = [];
+
+			// Restore original favicon
+			updateFavicon(0);
+		});
+	} else {
+		// Retry after a short delay if wrapper not found
+		setTimeout(setupClickHandler, 1000);
+	}
+}
+
+// Setup tab focus/blur handlers for favicon
+function setupFocusHandlers() {
+	console.log("[Codeable Monitor] Setting up focus handlers...");
+
+	// Use visibilitychange API which is more reliable
+	document.addEventListener("visibilitychange", () => {
+		if (document.hidden) {
+			// Tab is now hidden (blurred)
+			console.log(`[Codeable Monitor] Tab HIDDEN - showing notification favicon (count: ${previousCount})`);
+			isTabFocused = false;
+			if (previousCount > 0) {
+				updateFavicon(previousCount);
+			}
+		} else {
+			// Tab is now visible (focused)
+			console.log("[Codeable Monitor] Tab VISIBLE - restoring original favicon");
+			isTabFocused = true;
+			restoreFavicon();
+		}
+	});
+
+	// Also add window focus/blur as backup
+	window.addEventListener("focus", () => {
+		console.log("[Codeable Monitor] Window FOCUSED - restoring original favicon");
+		isTabFocused = true;
+		restoreFavicon();
+	});
+
+	window.addEventListener("blur", () => {
+		console.log(`[Codeable Monitor] Window BLURRED - showing notification favicon (count: ${previousCount})`);
+		isTabFocused = false;
+		if (previousCount > 0) {
+			updateFavicon(previousCount);
+		}
+	});
+
+	console.log("[Codeable Monitor] ✅ Tab focus handlers set up (visibilitychange + focus/blur)");
+}
+
+// Start monitoring when DOM is ready
+if (document.readyState === "loading") {
+	document.addEventListener("DOMContentLoaded", () => {
+		init();
+		setupClickHandler();
+		setupFocusHandlers();
+	});
+} else {
+	init();
+	setupClickHandler();
+	setupFocusHandlers();
+}
+
+// Cleanup on unload
+window.addEventListener("beforeunload", () => {
+	if (checkInterval) {
+		clearInterval(checkInterval);
+	}
+});

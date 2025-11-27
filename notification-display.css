@@ -1,0 +1,101 @@
+/* Notification display styles */
+
+#codeable-notification-container {
+	position: fixed;
+	right: 20px;
+	top: 20px;
+	transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+	z-index: 999999;
+	max-width: 500px;
+}
+
+#codeable-notification-container.codeable-notification-hidden {
+	opacity: 0;
+	pointer-events: none;
+	transform: translateX(400px);
+}
+
+#codeable-notification-container.codeable-notification-visible {
+	opacity: 1;
+	pointer-events: all;
+	transform: translateX(0);
+}
+
+.codeable-notification {
+	background: #ffffff;
+	border-left: 4px solid rgb(22, 82, 96);
+	border-radius: 4px;
+	box-shadow: 0 4px 12px rgba(22, 82, 96, 0.15);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	max-width: 500px;
+	min-width: 350px;
+	padding: 16px;
+	position: relative;
+}
+
+.codeable-notification-close {
+	align-items: center;
+	background: transparent;
+	border: none;
+	color: #999;
+	cursor: pointer;
+	display: flex;
+	font-size: 24px;
+	height: 24px;
+	justify-content: center;
+	line-height: 1;
+	padding: 0;
+	position: absolute;
+	right: 8px;
+	top: 8px;
+	transition: color 0.2s;
+	width: 24px;
+}
+
+.codeable-notification-close:hover {
+	color: #333;
+}
+
+.codeable-notification-title {
+	color: #333;
+	font-size: 16px;
+	font-weight: 600;
+	margin-bottom: 12px;
+	padding-right: 24px;
+}
+
+.codeable-notification-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+.codeable-notification-item {
+	background: #f5f5f5;
+	border-radius: 4px;
+	padding: 12px;
+	border-left: 2px solid rgba(22, 82, 96);
+}
+
+.codeable-notification-message {
+	color: #333;
+	font-size: 13px;
+	line-height: 1.5;
+	margin-bottom: 8px;
+}
+
+.codeable-notification-link {
+	color: rgba(22, 82, 96);
+	font-size: 13px;
+	font-weight: 500;
+	text-decoration: none;
+	transition: color 0.2s;
+	display: inline-block;
+}
+
+.codeable-notification-link:hover {
+	color: rgba(22, 82, 96);
+	text-decoration: underline;
+}

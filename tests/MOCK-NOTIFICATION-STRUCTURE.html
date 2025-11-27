@@ -1,0 +1,144 @@
+<!-- MOCK NOTIFICATION STRUCTURE FOR TESTING -->
+<!-- Use this HTML structure when using Chrome Local Overrides -->
+
+<!-- 1. Make the indicator visible on each widget you want to test -->
+<cdbl-notifications-widget category="new-projects">
+  <span class="notifications-indicator" style="display: block;">2</span>
+  <!-- ... other widget content ... -->
+</cdbl-notifications-widget>
+
+<!-- 2. Add this popover structure somewhere in the DOM -->
+<!-- The extension will find it when it clicks the widget -->
+<div class="popover-content popover-notifications-widget">
+  <div class="notifications-list-wrapper">
+
+    <!-- UNREAD NOTIFICATION 1 (this is the one that will be shown) -->
+    <cdbl-notification-item>
+      <div class="notification-wrapper">
+        <a href="tasks/212692">
+          <div class="notification__message">
+            New project posted: Need help with WordPress customization
+          </div>
+        </a>
+      </div>
+    </cdbl-notification-item>
+
+    <!-- UNREAD NOTIFICATION 2 -->
+    <cdbl-notification-item>
+      <div class="notification-wrapper">
+        <a href="tasks/212690">
+          <div class="notification__message">
+            Client responded to your proposal for E-commerce site
+          </div>
+        </a>
+      </div>
+    </cdbl-notification-item>
+
+    <!-- READ NOTIFICATION (will be ignored by extension) -->
+    <cdbl-notification-item>
+      <div class="notification-wrapper notification--isRead">
+        <a href="tasks/212680">
+          <div class="notification__message">
+            This notification was already read and will be skipped
+          </div>
+        </a>
+      </div>
+    </cdbl-notification-item>
+
+  </div>
+</div>
+
+
+<!-- COMPLETE EXAMPLE FOR ALL THREE CATEGORIES -->
+<!-- ============================================ -->
+
+<!-- NEW PROJECTS WIDGET -->
+<cdbl-notifications-widget category="new-projects">
+  <span class="notifications-indicator" style="display: block;">2</span>
+</cdbl-notifications-widget>
+
+<!-- IN PROGRESS WIDGET -->
+<cdbl-notifications-widget category="in-progress">
+  <span class="notifications-indicator" style="display: block;">1</span>
+</cdbl-notifications-widget>
+
+<!-- PENDING WIDGET -->
+<cdbl-notifications-widget category="pending">
+  <span class="notifications-indicator" style="display: block;">1</span>
+</cdbl-notifications-widget>
+
+<!--
+TOTAL BADGE COUNT: 2 + 1 + 1 = 4
+LATEST NOTIFICATION: "New project posted: Need help with WordPress customization"
+-->
+
+
+<!-- HOW TO USE WITH LOCAL OVERRIDES -->
+<!-- ================================= -->
+<!--
+1. Enable Local Overrides in DevTools (Sources → Overrides)
+2. Go to Elements tab
+3. Find the actual widgets on app.codeable.io
+4. Right-click → Edit as HTML
+5. Modify the indicator spans to have style="display: block;"
+6. Ctrl+Enter to save
+7. Find a good place in the DOM to add the popover structure
+8. Right-click on a parent element → Edit as HTML
+9. Add the popover structure above
+10. Ctrl+Enter to save
+11. Reload the page
+12. The extension will now find these elements every 3 seconds!
+-->
+
+
+<!-- TESTING SCENARIOS -->
+<!-- ================== -->
+
+<!-- Scenario 1: One unread notification -->
+<div class="notifications-list-wrapper">
+  <cdbl-notification-item>
+    <div class="notification-wrapper">
+      <a href="tasks/212692">
+        <div class="notification__message">Test notification message here</div>
+      </a>
+    </div>
+  </cdbl-notification-item>
+</div>
+
+<!-- Scenario 2: Multiple unread, some read -->
+<div class="notifications-list-wrapper">
+  <cdbl-notification-item>
+    <div class="notification-wrapper">
+      <a href="tasks/111111">
+        <div class="notification__message">Latest unread notification</div>
+      </a>
+    </div>
+  </cdbl-notification-item>
+  <cdbl-notification-item>
+    <div class="notification-wrapper notification--isRead">
+      <a href="tasks/222222">
+        <div class="notification__message">This one is read - will be ignored</div>
+      </a>
+    </div>
+  </cdbl-notification-item>
+  <cdbl-notification-item>
+    <div class="notification-wrapper">
+      <a href="tasks/333333">
+        <div class="notification__message">Another unread one</div>
+      </a>
+    </div>
+  </cdbl-notification-item>
+</div>
+<!-- Count: 2 unread (will show "2" in badge) -->
+
+<!-- Scenario 3: All read notifications -->
+<div class="notifications-list-wrapper">
+  <cdbl-notification-item>
+    <div class="notification-wrapper notification--isRead">
+      <a href="tasks/444444">
+        <div class="notification__message">All notifications are read</div>
+      </a>
+    </div>
+  </cdbl-notification-item>
+</div>
+<!-- Count: 0 unread (no badge shown) -->
