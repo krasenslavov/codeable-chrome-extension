@@ -1,3 +1,5 @@
+<!-- @format -->
+
 # Codeable Notifications
 
 Chrome extension for monitoring Codeable.io notifications.
@@ -5,10 +7,10 @@ Chrome extension for monitoring Codeable.io notifications.
 ## Screenshots
 
 ![Badge and Favicon](screenshots/badge-favicon.png)
-*Badge on extension icon and green favicon on background tab*
+_Badge on extension icon_
 
 ![Notification Popup](screenshots/notification-popup.png)
-*Notification message with link on other tabs*
+_Notification message with link on other tabs_
 
 ## Installation
 
