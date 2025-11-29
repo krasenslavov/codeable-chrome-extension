@@ -49,6 +49,31 @@ function init() {
 	});
 }
 
+// Helper function to wait for an element to appear
+function waitForElement(selector, timeout = 5000) {
+	return new Promise((resolve) => {
+		// Check if element already exists
+		const existing = document.querySelector(selector);
+		if (existing) {
+			resolve(existing);
+			return;
+		}
+
+		// Set up polling
+		const startTime = Date.now();
+		const interval = setInterval(() => {
+			const element = document.querySelector(selector);
+			if (element) {
+				clearInterval(interval);
+				resolve(element);
+			} else if (Date.now() - startTime >= timeout) {
+				clearInterval(interval);
+				resolve(null); // Timeout - return null
+			}
+		}, 100); // Check every 100ms
+	});
+}
+
 // Check for notifications
 async function checkNotifications(forceCheck = false) {
 	try {
@@ -96,11 +121,8 @@ async function checkNotifications(forceCheck = false) {
 			// Click the trigger to open the popover
 			trigger.click();
 
-			// Wait for popover to appear
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-
-			// Find the popover content
-			const popover = document.querySelector(".popover-content.popover-notifications-widget");
+			// Wait for popover to appear (with retry logic)
+			const popover = await waitForElement(".popover-content.popover-notifications-widget", 5000);
 			console.log(`[Codeable Monitor] Popover found: ${popover !== null}`);
 
 			// Hide the popover completely (so user doesn't see it)
